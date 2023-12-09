@@ -1,5 +1,6 @@
 use::std::net::UdpSocket;
-use::std::ptr;
+use::bytes::{ Bytes, BytesMut, Buf, BufMut };
+use::std::boxed::Box;
 
 struct PacketHeader {
     packet_type: u16,
@@ -10,32 +11,40 @@ struct PacketHeader {
 
 
 fn main() -> std::io::Result<()> {
-    let socket = UdpSocket::bind("10.0.0.95:7502")?;
-    let mut buf = [0;32];
-
+    let socket = UdpSocket::bind("169.254.60.200:7502")?;
     loop {
+    let mut buf = [0; 32];
     let (amt, _src) = socket.recv_from(&mut buf)?;
-    println!("Something from the sensor: {} from IP:{}", amt, _src);
+    let buf = &buf[..amt];
 
-    let buf = &mut buf[..amt];
-    let sensor_pkt: PacketHeader = parse_packet_header(buf);
+    let mut bytes = BytesMut::with_capacity(1024);
+    bytes.put(buf);
+    let sensor_pkt: PacketHeader = parse_packet_header(&mut bytes);
+    println!("Lidar packet type: {} ", sensor_pkt.packet_type);
+    println!("Lidar frame is as follows: {} ", sensor_pkt.frame_id);
+    println!("Init ID is: {} ", sensor_pkt.init_id);
+    println!("Sensor serial nubmer is: {} ", sensor_pkt.serial_number);
     } 
 }
 
-fn parse_packet_header(buf: &[u8]) -> PacketHeader {
-
-    let res: PacketHeader = PacketHeader { 
-        packet_type: u16::from_le_bytes(buf[0..2]),
-        frame_id: 0,
+fn parse_packet_header(buf: &mut BytesMut) -> PacketHeader {
+    let mut res: PacketHeader = PacketHeader { 
+        packet_type: buf.get_u16_le(),
+        frame_id: buf.get_u16_le(),
         init_id: 0,
         serial_number: 0,
     };
 
-    return res;
-}
+    let mut temp = buf.get_u64_le();
+    let serial = temp;
+    println!("This is a test of serial: {}", serial);
 
-fn extract_bits<T> (data: <T>, start: usize, end: usize) -> <T>{
-    let bitmask = ((1 << (end_bit - start_bit)) - 1) << start_bit; 
-    println!("The following bit mask is: {}", bitmask);
+    let mut serial: u64 = serial << 40;
+    serial = serial >> 40;
+    println!("This is a test of temp: {}", temp);
+    println!("This is a test of serial: {}", serial);
+    res.init_id = (temp as u32) >> 8;
+
+    return res;
 }
 
