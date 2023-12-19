@@ -1,6 +1,6 @@
 use::std::net::UdpSocket;
-use::bytes::{ Bytes, BytesMut, Buf, BufMut };
-use::std::boxed::Box;
+use::bytes::{ BytesMut, Buf, BufMut };
+use std::fmt;
 
 struct PacketHeader {
     packet_type: u16,
@@ -9,9 +9,19 @@ struct PacketHeader {
     serial_number: u64
 }
 
+impl fmt::Display for PacketHeader {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { 
+        write!(f, "Packer header is as follow:\nPacket Type: {}, Frame ID: {}, Init ID: {}, Serial number: {}", 
+            self.packet_type,
+            self.frame_id,
+            self.init_id,
+            self.serial_number)
+    }
+}
+
 
 fn main() -> std::io::Result<()> {
-    let socket = UdpSocket::bind("169.254.60.200:7502")?;
+    let socket = UdpSocket::bind("169.254.58.45:7502")?;
     loop {
     let mut buf = [0; 32];
     let (amt, _src) = socket.recv_from(&mut buf)?;
@@ -20,10 +30,7 @@ fn main() -> std::io::Result<()> {
     let mut bytes = BytesMut::with_capacity(1024);
     bytes.put(buf);
     let sensor_pkt: PacketHeader = parse_packet_header(&mut bytes);
-    println!("Lidar packet type: {} ", sensor_pkt.packet_type);
-    println!("Lidar frame is as follows: {} ", sensor_pkt.frame_id);
-    println!("Init ID is: {} ", sensor_pkt.init_id);
-    println!("Sensor serial nubmer is: {} ", sensor_pkt.serial_number);
+    println!("Print sensor packet: {}", sensor_pkt)
     } 
 }
 
@@ -35,15 +42,13 @@ fn parse_packet_header(buf: &mut BytesMut) -> PacketHeader {
         serial_number: 0,
     };
 
-    let mut temp = buf.get_u64_le();
-    let serial = temp;
-    println!("This is a test of serial: {}", serial);
+    let temp = buf.get_u64_le();
 
-    let mut serial: u64 = serial << 40;
-    serial = serial >> 40;
-    println!("This is a test of temp: {}", temp);
-    println!("This is a test of serial: {}", serial);
-    res.init_id = (temp as u32) >> 8;
+    let mut lower: u64 = temp << 40;
+    lower = lower >> 40;
+    let upper: u64 = temp >> 24;
+    res.init_id = lower as u32;
+    res.serial_number = upper;
 
     return res;
 }
