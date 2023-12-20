@@ -1,5 +1,5 @@
 [package]
-name = "ouste-rs"
+name = "ouster"
 version = "0.1.0"
 edition = "2021"
 
