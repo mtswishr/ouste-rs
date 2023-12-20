@@ -1,6 +1,7 @@
 use::std::net::UdpSocket;
 use::bytes::{ BytesMut, Buf, BufMut };
 use std::fmt;
+use clap::Parser;
 
 struct PacketHeader {
     packet_type: u16,
@@ -9,29 +10,94 @@ struct PacketHeader {
     serial_number: u64
 }
 
+struct MeasurementPacket {
+    range: u32,
+    reflectivity: u16,
+    signal: u16,
+    near_ir: u16,
+}
+
 impl fmt::Display for PacketHeader {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { 
-        write!(f, "Packer header is as follow:\nPacket Type: {}, Frame ID: {}, Init ID: {}, Serial number: {}", 
+        write!(f, "[Packet Type: {}, Frame ID: {}, Init ID: {}, Serial number: {}]", 
             self.packet_type,
             self.frame_id,
             self.init_id,
             self.serial_number)
     }
 }
+impl fmt::Display for MeasurementPacket {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { 
+        write!(f, "[range: {}, reflectivity: {}, signal: {}, near-ir: {}]", 
+            self.range,
+            self.reflectivity,
+            self.signal,
+            self.near_ir)
+    }
+}
 
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    #[arg(long)]
+    host: String,
+    #[arg(long)]
+    lidar_port: u32,
+    #[arg(long)]
+    imu_port: u32,
+}
 
 fn main() -> std::io::Result<()> {
-    let socket = UdpSocket::bind("169.254.58.45:7502")?;
+    let args = Args::parse();
+
+    let mut to_bind: String = args.host;
+    to_bind.push(':');
+    to_bind.push_str(&args.lidar_port.to_string());
+    let socket = UdpSocket::bind(to_bind)?;
+
     loop {
-    let mut buf = [0; 32];
+    //Todo: Buffer per packet type
+    let mut buf = [0; 1023];
     let (amt, _src) = socket.recv_from(&mut buf)?;
     let buf = &buf[..amt];
-
     let mut bytes = BytesMut::with_capacity(1024);
     bytes.put(buf);
     let sensor_pkt: PacketHeader = parse_packet_header(&mut bytes);
-    println!("Print sensor packet: {}", sensor_pkt)
+    println!("{}", sensor_pkt);
+
+    // Increment buffer, probably something in the crate that allows me to do this.
+    bytes.get_u64();
+    bytes.get_u64();
+    bytes.get_u32();
+
+    let timestamp: u64 = bytes.get_u64_le();
+    let measurement_id: u16 = bytes.get_u16_le();
+
+    //Increment packet buffer
+    bytes.get_u16_le();
+
+    for _columns in 0 .. 15 {
+        let column_pkt = parse_measurement(&mut bytes);
+        println!("{}", column_pkt);
+
+    }
+
+    bytes.get_u64();
+    bytes.get_u64();
+    bytes.get_u64();
+    bytes.get_u64();
     } 
+}
+
+fn parse_measurement(buf: &mut BytesMut) -> MeasurementPacket{
+    let res: MeasurementPacket = MeasurementPacket {
+        range: buf.get_u32_le(),
+        reflectivity: buf.get_u16_le(),
+        signal: buf.get_u16_le(),
+        near_ir: buf.get_u16_le()
+    };
+    buf.get_u16_le();
+    res
 }
 
 fn parse_packet_header(buf: &mut BytesMut) -> PacketHeader {
